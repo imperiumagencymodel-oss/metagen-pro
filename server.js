@@ -1,13 +1,10 @@
 const express = require('express');
 const multer = require('multer');
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('ffmpeg-static');
 const Anthropic = require('@anthropic-ai/sdk');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-
-ffmpeg.setFfmpegPath(ffmpegPath);
+const { execSync, exec } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,15 +25,15 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
 
 const VARIATIONS = [
-  { name: 'zoom_leger',    zoom: 1.08, mirror: false, brightness: 1.05, trim: 0 },
-  { name: 'miroir',        zoom: 1.00, mirror: true,  brightness: 1.00, trim: 0 },
-  { name: 'zoom_lumineux', zoom: 1.12, mirror: false, brightness: 1.15, trim: 1 },
-  { name: 'miroir_zoom',   zoom: 1.06, mirror: true,  brightness: 1.08, trim: 0 },
+  { name: 'zoom_leger', filter: 'scale=iw*1.08:ih*1.08,crop=iw/1.08:ih/1.08' },
+  { name: 'miroir', filter: 'hflip' },
+  { name: 'zoom_lumineux', filter: 'scale=iw*1.12:ih*1.12,crop=iw/1.12:ih/1.12,eq=brightness=0.15' },
+  { name: 'miroir_zoom', filter: 'hflip,scale=iw*1.06:ih*1.06,crop=iw/1.06:ih/1.06' },
 ];
 
-async function generateMetadata(filename, platform, tone, language, count) {
+async function generateMetadata(filename, platform, language, count) {
   const client = new Anthropic({ apiKey: API_KEY });
-  const prompt = `Expert marketing vidéo et SEO. Vidéo : "${filename}" | Plateforme : ${platform} | Ton : ${tone} | Langue : ${language}. Génère exactement ${count} variantes. JSON uniquement : {"variantes":[{"titre":"...","description":"...","tags":["t1","t2","t3","t4","t5"],"angle":"...","emoji":"..."}]}`;
+  const prompt = `Expert marketing vidéo. Vidéo : "${filename}" | Plateforme : ${platform} | Langue : ${language}. Génère exactement ${count} variantes JSON : {"variantes":[{"titre":"...","description":"...","tags":["t1","t2","t3","t4","t5"],"angle":"...","emoji":"..."}]}`;
   const message = await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] });
   const raw = message.content[0].text.replace(/```json|```/g, '').trim();
   return JSON.parse(raw).variantes;
@@ -44,26 +41,23 @@ async function generateMetadata(filename, platform, tone, language, count) {
 
 function applyVariation(inputPath, outputPath, variation) {
   return new Promise((resolve, reject) => {
-    let filters = [];
-    if (variation.mirror) filters.push('hflip');
-    if (variation.zoom !== 1.0) { filters.push(`scale=iw*${variation.zoom}:ih*${variation.zoom}`); filters.push(`crop=iw/${variation.zoom}:ih/${variation.zoom}`); }
-    if (variation.brightness !== 1.0) { const b = variation.brightness - 1.0; filters.push(`eq=brightness=${b.toFixed(2)}`); }
-    let cmd = ffmpeg(inputPath);
-    if (filters.length > 0) cmd = cmd.videoFilters(filters);
-    cmd.outputOptions(['-c:v libx264', '-c:a aac', '-movflags +faststart']).output(outputPath).on('end', resolve).on('error', reject).run();
+    const cmd = `ffmpeg -i "${inputPath}" -vf "${variation.filter}" -c:v libx264 -c:a aac -movflags +faststart "${outputPath}" -y`;
+    exec(cmd, (err) => { if (err) reject(err); else resolve(); });
   });
 }
 
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
 app.post('/api/generate', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Pas de vidéo' });
-  const { platform = 'Instagram', tone = 'dynamique', language = 'français', count = 3 } = req.body;
+  const { platform = 'Instagram', language = 'français', count = 3 } = req.body;
   const n = Math.min(4, Math.max(2, parseInt(count)));
   const inputPath = req.file.path;
   const baseName = path.basename(req.file.originalname, path.extname(req.file.originalname));
   const outputDir = '/tmp/outputs';
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
   try {
-    const variantes = await generateMetadata(req.file.originalname, platform, tone, language, n);
+    const variantes = await generateMetadata(req.file.originalname, platform, language, n);
     const results = [];
     for (let i = 0; i < n; i++) {
       const variation = VARIATIONS[i % VARIATIONS.length];
@@ -75,6 +69,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     fs.unlinkSync(inputPath);
     res.json({ success: true, results });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });

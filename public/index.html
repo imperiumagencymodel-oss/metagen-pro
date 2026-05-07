@@ -1,143 +1,88 @@
-const express = require('express');
-const multer = require('multer');
-const ffmpeg = require('fluent-ffmpeg');
-const Anthropic = require('@anthropic-ai/sdk');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.ANTHROPIC_API_KEY;
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
-
-// Upload config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = '/tmp/uploads';
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
-});
-const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
-
-// Variations
-const VARIATIONS = [
-  { name: 'zoom_leger',    zoom: 1.08, mirror: false, brightness: 1.05, trim: 0 },
-  { name: 'miroir',        zoom: 1.00, mirror: true,  brightness: 1.00, trim: 0 },
-  { name: 'zoom_lumineux', zoom: 1.12, mirror: false, brightness: 1.15, trim: 1 },
-  { name: 'miroir_zoom',   zoom: 1.06, mirror: true,  brightness: 1.08, trim: 0 },
-];
-
-// Generate metadata with Claude
-async function generateMetadata(filename, platform, tone, language, count) {
-  const client = new Anthropic({ apiKey: API_KEY });
-  const prompt = `Expert marketing vidéo et SEO.
-Vidéo : "${filename}" | Plateforme : ${platform} | Ton : ${tone} | Langue : ${language}
-Génère exactement ${count} variantes de métadonnées optimisées, angles différents.
-JSON uniquement sans markdown :
-{"variantes":[{"titre":"...","description":"...","tags":["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],"angle":"...","emoji":"..."}]}`;
-
-  const message = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }]
-  });
-  const raw = message.content[0].text.replace(/```json|```/g, '').trim();
-  return JSON.parse(raw).variantes;
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MetaGen Pro</title>
+</head>
+<body style="background:#0a0c0b;color:#e8ede9;font-family:sans-serif;max-width:780px;margin:0 auto;padding:20px">
+<h1 style="color:#3ddc84;margin-bottom:20px">MetaGen Pro ✦</h1>
+<div id="dz" onclick="document.getElementById('fi').click()" style="border:2px dashed #3ddc84;border-radius:14px;padding:40px;text-align:center;cursor:pointer;margin-bottom:20px;background:#111412">
+<p style="font-size:16px">🎬 Dépose ta vidéo ici</p>
+<p style="font-size:13px;color:#8a9e8d;margin-top:8px">MP4 · MOV · AVI</p>
+<input type="file" id="fi" accept="video/*" style="display:none">
+</div>
+<div id="editor" style="display:none">
+<video id="vid" controls style="width:100%;max-height:300px;background:#000;border-radius:10px;margin-bottom:14px;display:block"></video>
+<div style="background:#111412;border-radius:14px;padding:16px;margin-bottom:14px">
+<select id="plat" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px"><option>Instagram</option><option>YouTube</option><option>TikTok</option><option>LinkedIn</option></select>
+<select id="nb" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px"><option value="2">2 versions</option><option value="3" selected>3 versions</option><option value="4">4 versions</option></select>
+<select id="lang" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px"><option>français</option><option>anglais</option><option>espagnol</option></select>
+<button onclick="generate()" style="background:#3ddc84;color:#000;border:none;padding:12px 24px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;width:100%;margin-top:10px">✦ Créer les versions</button>
+</div>
+</div>
+<div id="results"></div>
+<script>
+let file=null,url=null,metas=[];
+document.getElementById('fi').onchange=e=>{load(e.target.files[0]);};
+document.getElementById('dz').ondragover=e=>e.preventDefault();
+document.getElementById('dz').ondrop=e=>{e.preventDefault();load(e.dataTransfer.files[0]);};
+function load(f){
+  if(!f||!f.type.startsWith('video/'))return;
+  file=f;
+  if(url)URL.revokeObjectURL(url);
+  url=URL.createObjectURL(f);
+  const v=document.getElementById('vid');
+  v.src=url;v.volume=1;v.muted=false;
+  document.getElementById('editor').style.display='block';
 }
-
-// Apply video variation with ffmpeg
-function applyVariation(inputPath, outputPath, variation) {
-  return new Promise((resolve, reject) => {
-    let filters = [];
-    
-    // Mirror
-    if (variation.mirror) filters.push('hflip');
-    
-    // Zoom + crop center
-    if (variation.zoom !== 1.0) {
-      filters.push(`scale=iw*${variation.zoom}:ih*${variation.zoom}`);
-      filters.push(`crop=iw/${variation.zoom}:ih/${variation.zoom}`);
-    }
-    
-    // Brightness
-    if (variation.brightness !== 1.0) {
-      const b = variation.brightness - 1.0;
-      filters.push(`eq=brightness=${b.toFixed(2)}`);
-    }
-
-    let cmd = ffmpeg(inputPath);
-    
-    if (filters.length > 0) {
-      cmd = cmd.videoFilters(filters);
-    }
-    
-    // Trim end
-    if (variation.trim > 0) {
-      cmd = cmd.outputOptions([`-t`, `999999`]);
-    }
-
-    cmd
-      .outputOptions(['-c:v libx264', '-c:a aac', '-movflags +faststart'])
-      .output(outputPath)
-      .on('end', resolve)
-      .on('error', reject)
-      .run();
-  });
-}
-
-// API Routes
-app.post('/api/generate', upload.single('video'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Pas de vidéo' });
-  
-  const { platform = 'Instagram', tone = 'dynamique', language = 'français', count = 3 } = req.body;
-  const n = Math.min(4, Math.max(2, parseInt(count)));
-  const inputPath = req.file.path;
-  const baseName = path.basename(req.file.originalname, path.extname(req.file.originalname));
-  const outputDir = '/tmp/outputs';
-  
-  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
-  try {
-    // Generate metadata
-    const variantes = await generateMetadata(req.file.originalname, platform, tone, language, n);
-    
-    // Process videos
-    const results = [];
-    for (let i = 0; i < n; i++) {
-      const variation = VARIATIONS[i % VARIATIONS.length];
-      const outputName = `${baseName}_v${i+1}_${variation.name}.mp4`;
-      const outputPath = path.join(outputDir, outputName);
-      
-      await applyVariation(inputPath, outputPath, variation);
-      
-      results.push({
-        index: i,
-        filename: outputName,
-        variation: variation.name,
-        metadata: variantes[i]
-      });
-    }
-    
-    // Cleanup input
-    fs.unlinkSync(inputPath);
-    
-    res.json({ success: true, results });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+async function generate(){
+  if(!file)return;
+  const n=document.getElementById('nb').value;
+  const plat=document.getElementById('plat').value;
+  const lang=document.getElementById('lang').value;
+  document.getElementById('results').innerHTML='<p style="color:#8a9e8d;text-align:center;padding:20px">⟳ Génération en cours...</p>';
+  try{
+    const r=await fetch('/api/generate',{method:'POST',body:Object.assign(new FormData(),{append:(k,v)=>{new FormData().append(k,v)}})});
+    const fd=new FormData();
+    fd.append('video',file);
+    fd.append('platform',plat);
+    fd.append('language',lang);
+    fd.append('count',n);
+    const resp=await fetch('/api/generate',{method:'POST',body:fd});
+    if(!resp.ok)throw new Error('Erreur serveur');
+    const data=await resp.json();
+    metas=data.results.map(r=>r.metadata);
+    let h='';
+    data.results.forEach((r,i)=>{
+      const x=r.metadata;
+      const tags=(x.tags||[]).map(t=>`<span style="font-size:11px;border:1px solid #333;border-radius:4px;padding:2px 6px;margin:2px;display:inline-block">#${t}</span>`).join('');
+      h+=`<div style="background:#111412;border:1px solid #222;border-radius:14px;padding:16px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+          <span style="font-size:11px;background:#181c19;padding:2px 8px;border-radius:4px">VERSION 0${i+1} — ${r.variation}</span>
+          <span style="font-size:11px;background:#1a3326;color:#3ddc84;padding:2px 10px;border-radius:100px">${x.emoji||''} ${x.angle||''}</span>
+        </div>
+        <div style="font-size:15px;font-weight:500;margin-bottom:6px">${x.titre}</div>
+        <div style="font-size:12px;color:#8a9e8d;margin-bottom:8px;line-height:1.6">${x.description}</div>
+        <div style="margin-bottom:12px">${tags}</div>
+        <video controls style="width:100%;max-height:200px;background:#000;border-radius:8px;display:block;margin-bottom:10px">
+          <source src="/api/download/${r.filename}" type="video/mp4">
+        </video>
+        <div style="display:flex;gap:8px">
+          <a href="/api/download/${r.filename}" download="${r.filename}" style="flex:1;background:#3ddc84;color:#000;border:none;padding:10px;border-radius:8px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none">⬇ Télécharger version ${i+1}</a>
+          <button onclick="cp(this,${i})" style="background:#181c19;color:#8a9e8d;border:1px solid #333;padding:10px 14px;border-radius:8px;cursor:pointer">Copier texte</button>
+        </div>
+      </div>`;
+    });
+    document.getElementById('results').innerHTML=h;
+  }catch(e){
+    document.getElementById('results').innerHTML='<p style="color:#f09595">⚠ '+e.message+'</p>';
   }
-});
-
-app.get('/api/download/:filename', (req, res) => {
-  const filePath = path.join('/tmp/outputs', req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Fichier introuvable' });
-  res.download(filePath);
-});
-
-app.listen(PORT, () => console.log(`MetaGen Pro running on port ${PORT}`));
+}
+function cp(btn,i){
+  const x=metas[i];
+  navigator.clipboard.writeText(x.titre+'\n\n'+x.description+'\n\n'+(x.tags||[]).map(t=>'#'+t).join(' ')).then(()=>{btn.textContent='Copié!';setTimeout(()=>btn.textContent='Copier texte',2000);});
+}
+</script>
+</body>
+</html>

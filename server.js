@@ -55,14 +55,9 @@ async function generateMetadata(filename, platform, language, count) {
   return JSON.parse(raw).variantes;
 }
 
-function applyVariation(input, output, variation, caption) {
+function applyVariation(input, output, variation) {
   return new Promise(function(resolve, reject) {
-    let vf = variation.filter;
-    if (caption && caption.trim() !== '') {
-      const safe = caption.replace(/\\/g, '\\\\').replace(/'/g, '').replace(/:/g, '\\:').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
-      vf += ',drawtext=text=\'' + safe + '\':fontsize=48:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=h-120:font=Arial';
-    }
-    const args = ['-i', input, '-vf', vf, '-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart', output, '-y'];
+    const args = ['-i', input, '-vf', variation.filter, '-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart', output, '-y'];
     execFile(ffmpegPath, args, function(err, stdout, stderr) {
       if (err) reject(new Error(stderr || err.message));
       else resolve();
@@ -91,7 +86,7 @@ app.post('/api/generate', upload.single('video'), async function(req, res) {
       const caption = captionsList.length > 0 ? captionsList[i % captionsList.length] : '';
       const outputName = baseName + '_v' + (i + 1) + '_' + variation.name + '.mp4';
       const outputPath = path.join(outputDir, outputName);
-      await applyVariation(inputPath, outputPath, variation, caption);
+      await applyVariation(inputPath, outputPath, variation);
       results.push({ index: i, filename: outputName, variation: variation.name, caption: caption, metadata: variantes[i] });
     }
     fs.unlinkSync(inputPath);

@@ -50,7 +50,7 @@ function load(f){
 }
 async function generate(){
   if(!file)return;
-  var n=document.getElementById('nb').value;
+  var n=parseInt(document.getElementById('nb').value);
   var plat=document.getElementById('plat').value;
   var lang=document.getElementById('lang').value;
   document.getElementById('results').innerHTML='<p style="color:#8a9e8d;text-align:center;padding:20px">⟳ Génération de '+n+' versions en cours... (peut prendre plusieurs minutes)</p>';
@@ -61,19 +61,24 @@ async function generate(){
     fd.append('language',lang);
     fd.append('count',n);
     var resp=await fetch('/api/generate',{method:'POST',body:fd});
-    if(!resp.ok)throw new Error('Erreur serveur');
+    if(!resp.ok){var err=await resp.json();throw new Error(err.error||'Erreur serveur');}
     var data=await resp.json();
-    metas=data.results.map(function(r){return r.metadata;});
+    if(!data.results||data.results.length===0)throw new Error('Aucun résultat');
+    metas=data.results.map(function(r){return r.metadata||{};});
     var h='<h2 style="color:#3ddc84;margin-bottom:14px">'+data.results.length+' versions générées ✦</h2>';
     data.results.forEach(function(r,i){
-      var x=r.metadata;
+      var x=r.metadata||{};
+      var titre=x.titre||'Sans titre';
+      var description=x.description||'';
       var tags=(x.tags||[]).map(function(t){return '<span style="font-size:11px;border:1px solid #333;border-radius:4px;padding:2px 6px;margin:2px;display:inline-block">#'+t+'</span>';}).join('');
+      var angle=x.angle||'';
+      var emoji=x.emoji||'';
       h+='<div style="background:#111412;border:1px solid #222;border-radius:14px;padding:16px;margin-bottom:14px">';
       h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
       h+='<span style="font-size:11px;background:#181c19;padding:2px 8px;border-radius:4px">VERSION '+(i+1)+' — '+r.variation+'</span>';
-      h+='<span style="font-size:11px;background:#1a3326;color:#3ddc84;padding:2px 10px;border-radius:100px">'+(x.emoji||'')+' '+(x.angle||'')+'</span></div>';
-      h+='<div style="font-size:15px;font-weight:500;margin-bottom:6px">'+x.titre+'</div>';
-      h+='<div style="font-size:12px;color:#8a9e8d;margin-bottom:8px;line-height:1.6">'+x.description+'</div>';
+      h+='<span style="font-size:11px;background:#1a3326;color:#3ddc84;padding:2px 10px;border-radius:100px">'+emoji+' '+angle+'</span></div>';
+      h+='<div style="font-size:15px;font-weight:500;margin-bottom:6px">'+titre+'</div>';
+      h+='<div style="font-size:12px;color:#8a9e8d;margin-bottom:8px;line-height:1.6">'+description+'</div>';
       h+='<div style="margin-bottom:12px">'+tags+'</div>';
       h+='<video controls style="width:100%;max-height:200px;background:#000;border-radius:8px;display:block;margin-bottom:10px"><source src="/api/download/'+r.filename+'" type="video/mp4"></video>';
       h+='<div style="display:flex;gap:8px">';
@@ -88,7 +93,8 @@ async function generate(){
 }
 function cp(btn,i){
   var x=metas[i];
-  navigator.clipboard.writeText(x.titre+'\n\n'+x.description+'\n\n'+(x.tags||[]).map(function(t){return '#'+t;}).join(' ')).then(function(){btn.textContent='Copié!';setTimeout(function(){btn.textContent='Copier texte';},2000);});
+  var t=(x.titre||'')+'\n\n'+(x.description||'')+'\n\n'+(x.tags||[]).map(function(t){return '#'+t;}).join(' ');
+  navigator.clipboard.writeText(t).then(function(){btn.textContent='Copié!';setTimeout(function(){btn.textContent='Copier texte';},2000);});
 }
 </script>
 </body>

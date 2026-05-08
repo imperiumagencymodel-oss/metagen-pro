@@ -4,7 +4,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
@@ -34,11 +34,11 @@ const V = [
   { name: 'zoom2', filter: 'scale=iw*1.12:ih*1.12,crop=iw/1.12:ih/1.12' },
   { name: 'miroir2', filter: 'hflip,scale=iw*1.06:ih*1.06,crop=iw/1.06:ih/1.06' },
   { name: 'zoom3', filter: 'scale=iw*1.15:ih*1.15,crop=iw/1.15:ih/1.15' },
-  { name: 'miroir3', filter: 'hflip,eq=brightness=0.1' },
+  { name: 'miroir3', filter: 'hflip' },
   { name: 'zoom4', filter: 'scale=iw*1.1:ih*1.1,crop=iw/1.1:ih/1.1' },
-  { name: 'contraste', filter: 'eq=contrast=1.2' },
-  { name: 'miroir4', filter: 'hflip,eq=contrast=1.15' },
-  { name: 'zoom5', filter: 'scale=iw*1.09:ih*1.09,crop=iw/1.09:ih/1.09' }
+  { name: 'miroir4', filter: 'hflip,scale=iw*1.08:ih*1.08,crop=iw/1.08:ih/1.08' },
+  { name: 'zoom5', filter: 'scale=iw*1.09:ih*1.09,crop=iw/1.09:ih/1.09' },
+  { name: 'miroir5', filter: 'hflip,scale=iw*1.1:ih*1.1,crop=iw/1.1:ih/1.1' }
 ];
 
 async function generateMetadata(filename, platform, language, count) {
@@ -46,7 +46,10 @@ async function generateMetadata(filename, platform, language, count) {
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 4000,
-    messages: [{ role: 'user', content: 'Expert marketing. Video: "' + filename + '" Platform: ' + platform + ' Language: ' + language + ' Generate ' + count + ' variants JSON only: {"variantes":[{"titre":"...","description":"...","tags":["t1","t2","t3","t4","t5"],"angle":"...","emoji":"..."}]}' }]
+    messages: [{
+      role: 'user',
+      content: 'Expert marketing. Video: "' + filename + '" Platform: ' + platform + ' Language: ' + language + ' Generate ' + count + ' variants JSON only no markdown: {"variantes":[{"titre":"...","description":"...","tags":["t1","t2","t3","t4","t5"],"angle":"...","emoji":"..."}]}'
+    }]
   });
   const raw = msg.content[0].text.replace(/```json|```/g, '').trim();
   return JSON.parse(raw).variantes;
@@ -54,14 +57,25 @@ async function generateMetadata(filename, platform, language, count) {
 
 function applyVariation(input, output, variation) {
   return new Promise(function(resolve, reject) {
-    exec('"' + ffmpegPath + '" -i "' + input + '" -vf "' + variation.filter + '" -c:v libx264 -c:a aac -movflags +faststart "' + output + '" -y', function(err, stdout, stderr) {
-      if (err) reject(new Error(stderr));
+    const args = [
+      '-i', input,
+      '-vf', variation.filter,
+      '-c:v', 'libx264',
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      output,
+      '-y'
+    ];
+    execFile(ffmpegPath, args, function(err, stdout, stderr) {
+      if (err) reject(new Error(stderr || err.message));
       else resolve();
     });
   });
 }
 
-app.get('/health', function(req, res) { res.json({ ok: true }); });
+app.get('/health', function(req, res) {
+  res.json({ ok: true, ffmpeg: ffmpegPath });
+});
 
 app.post('/api/generate', upload.single('video'), async function(req, res) {
   if (!req.file) return res.status(400).json({ error: 'No video' });
@@ -85,6 +99,7 @@ app.post('/api/generate', upload.single('video'), async function(req, res) {
     fs.unlinkSync(inputPath);
     res.json({ success: true, results: results });
   } catch (err) {
+    console.error(err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -95,4 +110,6 @@ app.get('/api/download/:filename', function(req, res) {
   res.download(filePath);
 });
 
-app.listen(PORT, function() { console.log('MetaGen Pro port ' + PORT); });
+app.listen(PORT, function() {
+  console.log('MetaGen Pro port ' + PORT);
+});

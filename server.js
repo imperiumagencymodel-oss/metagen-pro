@@ -45,7 +45,7 @@ async function generateMetadata(filename, platform, language, count) {
   const client = new Anthropic({ apiKey: API_KEY });
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4000,
+    max_tokens: 8000,
     messages: [{
       role: 'user',
       content: 'Expert marketing. Video: "' + filename + '" Platform: ' + platform + ' Language: ' + language + ' Generate ' + count + ' variants JSON only no markdown: {"variantes":[{"titre":"...","description":"...","tags":["t1","t2","t3","t4","t5"],"angle":"...","emoji":"..."}]}'

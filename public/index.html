@@ -15,64 +15,71 @@
 <div id="editor" style="display:none">
 <video id="vid" controls style="width:100%;max-height:300px;background:#000;border-radius:10px;margin-bottom:14px;display:block"></video>
 <div style="background:#111412;border-radius:14px;padding:16px;margin-bottom:14px">
-<select id="plat" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px"><option>Instagram</option><option>YouTube</option><option>TikTok</option><option>LinkedIn</option></select>
-<select id="nb" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px"><option value="2">2 versions</option><option value="3" selected>3 versions</option><option value="4">4 versions</option></select>
-<select id="lang" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px"><option>français</option><option>anglais</option><option>espagnol</option></select>
+<select id="plat" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px">
+<option>Instagram</option><option>YouTube</option><option>TikTok</option><option>LinkedIn</option>
+</select>
+<select id="nb" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px">
+<option value="2">2 versions</option>
+<option value="3" selected>3 versions</option>
+<option value="5">5 versions</option>
+<option value="10">10 versions</option>
+<option value="20">20 versions</option>
+<option value="30">30 versions</option>
+<option value="50">50 versions</option>
+</select>
+<select id="lang" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px">
+<option>français</option><option>anglais</option><option>espagnol</option>
+</select>
 <button onclick="generate()" style="background:#3ddc84;color:#000;border:none;padding:12px 24px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;width:100%;margin-top:10px">✦ Créer les versions</button>
 </div>
 </div>
 <div id="results"></div>
 <script>
 let file=null,url=null,metas=[];
-document.getElementById('fi').onchange=e=>{load(e.target.files[0]);};
-document.getElementById('dz').ondragover=e=>e.preventDefault();
-document.getElementById('dz').ondrop=e=>{e.preventDefault();load(e.dataTransfer.files[0]);};
+document.getElementById('fi').onchange=function(e){load(e.target.files[0]);};
+document.getElementById('dz').ondragover=function(e){e.preventDefault();};
+document.getElementById('dz').ondrop=function(e){e.preventDefault();load(e.dataTransfer.files[0]);};
 function load(f){
   if(!f||!f.type.startsWith('video/'))return;
   file=f;
   if(url)URL.revokeObjectURL(url);
   url=URL.createObjectURL(f);
-  const v=document.getElementById('vid');
+  var v=document.getElementById('vid');
   v.src=url;v.volume=1;v.muted=false;
   document.getElementById('editor').style.display='block';
 }
 async function generate(){
   if(!file)return;
-  const n=document.getElementById('nb').value;
-  const plat=document.getElementById('plat').value;
-  const lang=document.getElementById('lang').value;
-  document.getElementById('results').innerHTML='<p style="color:#8a9e8d;text-align:center;padding:20px">⟳ Génération en cours...</p>';
+  var n=document.getElementById('nb').value;
+  var plat=document.getElementById('plat').value;
+  var lang=document.getElementById('lang').value;
+  document.getElementById('results').innerHTML='<p style="color:#8a9e8d;text-align:center;padding:20px">⟳ Génération de '+n+' versions en cours... (peut prendre plusieurs minutes)</p>';
   try{
-    const r=await fetch('/api/generate',{method:'POST',body:Object.assign(new FormData(),{append:(k,v)=>{new FormData().append(k,v)}})});
-    const fd=new FormData();
+    var fd=new FormData();
     fd.append('video',file);
     fd.append('platform',plat);
     fd.append('language',lang);
     fd.append('count',n);
-    const resp=await fetch('/api/generate',{method:'POST',body:fd});
+    var resp=await fetch('/api/generate',{method:'POST',body:fd});
     if(!resp.ok)throw new Error('Erreur serveur');
-    const data=await resp.json();
-    metas=data.results.map(r=>r.metadata);
-    let h='';
-    data.results.forEach((r,i)=>{
-      const x=r.metadata;
-      const tags=(x.tags||[]).map(t=>`<span style="font-size:11px;border:1px solid #333;border-radius:4px;padding:2px 6px;margin:2px;display:inline-block">#${t}</span>`).join('');
-      h+=`<div style="background:#111412;border:1px solid #222;border-radius:14px;padding:16px;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-          <span style="font-size:11px;background:#181c19;padding:2px 8px;border-radius:4px">VERSION 0${i+1} — ${r.variation}</span>
-          <span style="font-size:11px;background:#1a3326;color:#3ddc84;padding:2px 10px;border-radius:100px">${x.emoji||''} ${x.angle||''}</span>
-        </div>
-        <div style="font-size:15px;font-weight:500;margin-bottom:6px">${x.titre}</div>
-        <div style="font-size:12px;color:#8a9e8d;margin-bottom:8px;line-height:1.6">${x.description}</div>
-        <div style="margin-bottom:12px">${tags}</div>
-        <video controls style="width:100%;max-height:200px;background:#000;border-radius:8px;display:block;margin-bottom:10px">
-          <source src="/api/download/${r.filename}" type="video/mp4">
-        </video>
-        <div style="display:flex;gap:8px">
-          <a href="/api/download/${r.filename}" download="${r.filename}" style="flex:1;background:#3ddc84;color:#000;border:none;padding:10px;border-radius:8px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none">⬇ Télécharger version ${i+1}</a>
-          <button onclick="cp(this,${i})" style="background:#181c19;color:#8a9e8d;border:1px solid #333;padding:10px 14px;border-radius:8px;cursor:pointer">Copier texte</button>
-        </div>
-      </div>`;
+    var data=await resp.json();
+    metas=data.results.map(function(r){return r.metadata;});
+    var h='<h2 style="color:#3ddc84;margin-bottom:14px">'+data.results.length+' versions générées ✦</h2>';
+    data.results.forEach(function(r,i){
+      var x=r.metadata;
+      var tags=(x.tags||[]).map(function(t){return '<span style="font-size:11px;border:1px solid #333;border-radius:4px;padding:2px 6px;margin:2px;display:inline-block">#'+t+'</span>';}).join('');
+      h+='<div style="background:#111412;border:1px solid #222;border-radius:14px;padding:16px;margin-bottom:14px">';
+      h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
+      h+='<span style="font-size:11px;background:#181c19;padding:2px 8px;border-radius:4px">VERSION '+(i+1)+' — '+r.variation+'</span>';
+      h+='<span style="font-size:11px;background:#1a3326;color:#3ddc84;padding:2px 10px;border-radius:100px">'+(x.emoji||'')+' '+(x.angle||'')+'</span></div>';
+      h+='<div style="font-size:15px;font-weight:500;margin-bottom:6px">'+x.titre+'</div>';
+      h+='<div style="font-size:12px;color:#8a9e8d;margin-bottom:8px;line-height:1.6">'+x.description+'</div>';
+      h+='<div style="margin-bottom:12px">'+tags+'</div>';
+      h+='<video controls style="width:100%;max-height:200px;background:#000;border-radius:8px;display:block;margin-bottom:10px"><source src="/api/download/'+r.filename+'" type="video/mp4"></video>';
+      h+='<div style="display:flex;gap:8px">';
+      h+='<a href="/api/download/'+r.filename+'" download="'+r.filename+'" style="flex:1;background:#3ddc84;color:#000;border:none;padding:10px;border-radius:8px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none">⬇ Télécharger version '+(i+1)+'</a>';
+      h+='<button onclick="cp(this,'+i+')" style="background:#181c19;color:#8a9e8d;border:1px solid #333;padding:10px 14px;border-radius:8px;cursor:pointer">Copier texte</button>';
+      h+='</div></div>';
     });
     document.getElementById('results').innerHTML=h;
   }catch(e){
@@ -80,8 +87,8 @@ async function generate(){
   }
 }
 function cp(btn,i){
-  const x=metas[i];
-  navigator.clipboard.writeText(x.titre+'\n\n'+x.description+'\n\n'+(x.tags||[]).map(t=>'#'+t).join(' ')).then(()=>{btn.textContent='Copié!';setTimeout(()=>btn.textContent='Copier texte',2000);});
+  var x=metas[i];
+  navigator.clipboard.writeText(x.titre+'\n\n'+x.description+'\n\n'+(x.tags||[]).map(function(t){return '#'+t;}).join(' ')).then(function(){btn.textContent='Copié!';setTimeout(function(){btn.textContent='Copier texte';},2000);});
 }
 </script>
 </body>

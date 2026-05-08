@@ -30,6 +30,12 @@
 <select id="lang" style="padding:8px;margin:5px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px">
 <option>français</option><option>anglais</option><option>espagnol</option>
 </select>
+
+<div style="margin-top:14px">
+<p style="color:#3ddc84;font-size:13px;margin-bottom:8px">✦ Tes captions (une par ligne — chaque vidéo aura une caption différente) :</p>
+<textarea id="captions" rows="8" placeholder="Caption 1&#10;Caption 2&#10;Caption 3&#10;Caption 4&#10;Caption 5&#10;Caption 6&#10;Caption 7&#10;Caption 8" style="width:100%;padding:10px;background:#181c19;color:#e8ede9;border:1px solid #333;border-radius:8px;font-size:13px;resize:vertical"></textarea>
+</div>
+
 <button onclick="generate()" style="background:#3ddc84;color:#000;border:none;padding:12px 24px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;width:100%;margin-top:10px">✦ Créer les versions</button>
 </div>
 </div>
@@ -50,16 +56,19 @@ function load(f){
 }
 async function generate(){
   if(!file)return;
-  var n=document.getElementById('nb').value;
+  var n=parseInt(document.getElementById('nb').value);
   var plat=document.getElementById('plat').value;
   var lang=document.getElementById('lang').value;
-  document.getElementById('results').innerHTML='<p style="color:#8a9e8d;text-align:center;padding:20px">⟳ Génération de '+n+' versions en cours... (peut prendre plusieurs minutes)</p>';
+  var captionsRaw=document.getElementById('captions').value;
+  var captionsList=captionsRaw.split('\n').map(function(c){return c.trim();}).filter(function(c){return c!=='';});
+  document.getElementById('results').innerHTML='<p style="color:#8a9e8d;text-align:center;padding:20px">⟳ Génération de '+n+' versions en cours...</p>';
   try{
     var fd=new FormData();
     fd.append('video',file);
     fd.append('platform',plat);
     fd.append('language',lang);
     fd.append('count',n);
+    fd.append('captions',JSON.stringify(captionsList));
     var resp=await fetch('/api/generate',{method:'POST',body:fd});
     if(!resp.ok)throw new Error('Erreur serveur');
     var data=await resp.json();
@@ -70,8 +79,9 @@ async function generate(){
       var tags=(x.tags||[]).map(function(t){return '<span style="font-size:11px;border:1px solid #333;border-radius:4px;padding:2px 6px;margin:2px;display:inline-block">#'+t+'</span>';}).join('');
       h+='<div style="background:#111412;border:1px solid #222;border-radius:14px;padding:16px;margin-bottom:14px">';
       h+='<div style="display:flex;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
-      h+='<span style="font-size:11px;background:#181c19;padding:2px 8px;border-radius:4px">VERSION '+(i+1)+' — '+r.variation+'</span>';
+      h+='<span style="font-size:11px;background:#181c19;padding:2px 8px;border-radius:4px">VERSION '+(i+1)+'</span>';
       h+='<span style="font-size:11px;background:#1a3326;color:#3ddc84;padding:2px 10px;border-radius:100px">'+(x.emoji||'')+' '+(x.angle||'')+'</span></div>';
+      if(r.caption)'<div style="font-size:12px;color:#3ddc84;margin-bottom:6px">📝 Caption : '+r.caption+'</div>';
       h+='<div style="font-size:15px;font-weight:500;margin-bottom:6px">'+x.titre+'</div>';
       h+='<div style="font-size:12px;color:#8a9e8d;margin-bottom:8px;line-height:1.6">'+x.description+'</div>';
       h+='<div style="margin-bottom:12px">'+tags+'</div>';
